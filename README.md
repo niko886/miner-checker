@@ -2,6 +2,11 @@
 
 Simple program that helps you to watch what happening with your miners in *realtime*
 
+## Features 
+
+* Show you realtime information
+* Notifies you on email, if any errors
+
 ## Install and run
 
 * Setup python 2.x 
