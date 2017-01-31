@@ -1,0 +1,12 @@
+MAIL_SERVER    = 'smtp.gmail.com:587'
+MAIL_USER      = 'yourmail@gmail.com'
+MAIL_PASSWORD  = 'yourpass' 
+MAIL_FROMADDR  = 'yourmail@gmail.com'
+MAIL_TOADDR    = 'yourmail@gmail.com'
+
+
+MINER_USERNAME = 'root'
+MINER_PASSWORD = 'root'
+MINER_MINERS = ['192.168.0.101',  
+           '192.168.0.102',
+           ]
