@@ -180,7 +180,10 @@ class MinerInfo():
             self._infoData[domain]['asicFanMin'] 		= ''
 
             try:
-                self._infoData[domain]['asicStatusData']	= re.findall('cbi-table-1-status"> (.*?)<', data, re.DOTALL)
+                r = re.findall('cbi-table-1-status"> (.*?)<', data, re.DOTALL)
+                if not r:
+                    r = re.findall('cbi-table-1-status">(.*?) <', data, re.DOTALL)
+                self._infoData[domain]['asicStatusData']	= r 
                 self._infoData[domain]['asicChipTemp']		= re.findall('<div id="cbi-table-1-temp2">(.*?)</div>', data, re.DOTALL)
                 self._infoData[domain]['asicBoardTemp']		= re.findall('<div id="cbi-table-1-temp">(.*?)</div>', data, re.DOTALL)
                 self._infoData[domain]['asicHashRate']		= re.search('<div id="ant_ghs5s">(.*?)</div>', data, re.DOTALL).group(1)
@@ -341,16 +344,29 @@ class MinerInfo():
             
         if domain in self._infoData:
 
-            out += '%s:  ' % (domain) 
-            out += '%s (%s) [%09s]  ' % (self._infoData[domain]['asicHashRate'],
-                self._infoData[domain]['asicHashRateAvg'],
-                self._infoData[domain]['asicIdealHashRate'])
+            out += '%s:  ' % (domain)
+            
+            if self._infoData[domain]['asicIdealHashRate']:
+                
+                out += '%s (%s) [%09s]  ' % (self._infoData[domain]['asicHashRate'],
+                    self._infoData[domain]['asicHashRateAvg'],
+                    self._infoData[domain]['asicIdealHashRate'])
+            else:
+                out += '%s (%s)  ' % (self._infoData[domain]['asicHashRate'],
+                    self._infoData[domain]['asicHashRateAvg'])
+                
             out += '%s  ' % self._infoData[domain]['asicHWPercent']
             out += '%10s  ' % self._infoData[domain]['asicTimeElapsed']
             out += '%05s  ' % self.IsStatusOk(self._infoData[domain]['asicStatusData'])
-            out += '%-12s  ' % ' '.join((self._infoData[domain]['asicChipTemp']))
-            out += '%s|%s  ' % (self._infoData[domain]['asicFanMax'], 
-                self._infoData[domain]['asicFanMin'])
+            
+            if self._infoData[domain]['asicChipTemp']:
+                out += '%-12s  ' % ' '.join((self._infoData[domain]['asicChipTemp']))
+            else:
+                out += '%-12s  ' % ' '.join((self._infoData[domain]['asicBoardTemp']))
+
+                
+            out += '%s|%s  ' % (self._infoData[domain]['asicFanMax'] + '%', 
+                self._infoData[domain]['asicFanMin'] + '%')
             
             out += '\n'
         
@@ -509,7 +525,7 @@ class testMiner(unittest.TestCase):
         mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'testOk.html'), 'r').read())
         mInfo.ParseMinerInfo('domain')
         s = mInfo.MakeMinerInfoDigest('domain')
-        s1 = 'domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69|67  \n'
+        s1 = 'domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  \n'
          
         self.assertEqual(s1, s, 'parse from test-data test')
          
@@ -617,7 +633,7 @@ class testMiner(unittest.TestCase):
          
         s = mInfo.Info()
          
-        self.assertEqual("domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69|67  \n", 
+        self.assertEqual("domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  \n", 
                          s, "urllib2 mock test")
          
         urllib2Mock.validate()
@@ -647,14 +663,14 @@ class testMiner(unittest.TestCase):
  
         with Mock() as notifierMock:
              
-            notifierMock().NotifyRaw('Some error with miners', 'miner domain hashrate is to low (11845 < 14004 - 10 percent)\n\ndomain:  11,845.93 (13,849.65) [14,004.90]  0.0007%  13d8h26m24s     OK  75 96 78      69|65  \n')
+            notifierMock().NotifyRaw('Some error with miners', 'miner domain hashrate is to low (11845 < 14004 - 10 percent)\n\ndomain:  11,845.93 (13,849.65) [14,004.90]  0.0007%  13d8h26m24s     OK  75 96 78      69%|65%  \n')
  
         mInfo = MinerInfo(['domain'], notifySingle=True)
         mInfo.SetLibraries(notifierClass=notifierMock, urllib2Class=urllib2Mock)
          
         s = mInfo.Info()
          
-        self.assertEqual("domain:  11,845.93 (13,849.65) [14,004.90]  0.0007%  13d8h26m24s     OK  75 96 78      69|65  \n", 
+        self.assertEqual("domain:  11,845.93 (13,849.65) [14,004.90]  0.0007%  13d8h26m24s     OK  75 96 78      69%|65%  \n", 
                          s, "notifier mock test")
          
         notifierMock.validate()
@@ -717,8 +733,8 @@ class testMiner(unittest.TestCase):
          
         d, s = multi.MakeAllInfo()
         
-        textResult = """domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69|67  
-domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69|67  
+        textResult = """domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  
+domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  
 """
 
         messageResult = ''
@@ -732,6 +748,39 @@ domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 
         notifierMock2.validate()
         
         
+        
+        log.info("running test: s7 html test")
+        
+        from ludibrio import Mock 
+         
+        with Mock() as urllib2Mock:
+ 
+            theurl = 'http://%s/cgi-bin/minerStatus.cgi' % 'domain'
+ 
+            passman = urllib2Mock.HTTPPasswordMgrWithDefaultRealm()
+             
+            passman.add_password(None, theurl, _USERNAME, _PASSWORD)
+             
+            authhandler = urllib2Mock.HTTPDigestAuthHandler(passman)
+             
+            opener = urllib2Mock.build_opener(authhandler)
+            urllib2Mock.install_opener(opener)
+             
+            pagehandle = urllib2Mock.urlopen(theurl)
+     
+            rawData =   open(os.path.join('test-data','s7.html'), 'r').read()
+     
+            pagehandle.read() >> rawData
+         
+         
+        mInfo = MinerInfo(['domain'])
+        mInfo.SetLibraries(None, urllib2Class=urllib2Mock)
+         
+        s = mInfo.MakeAllInfo()
+        
+        self.assertEqual('domain:  4,565.38 (4,716.19)  0.0017%  4d16h21m47s     !2  38 45 43      61%|59%  \n', s, "comparing text")        
+                  
+        urllib2Mock.validate()
         
 
 
