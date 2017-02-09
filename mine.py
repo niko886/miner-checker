@@ -41,8 +41,6 @@ from notifier import Notifier
 
 
 if sys.version_info[0] == 3:
-    
-    
     from urllib import request as urllib2
 else:
     import urllib2
@@ -751,7 +749,7 @@ domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 
         
         log.info("running test: s7 html test")
         
-        from ludibrio import Mock 
+         
          
         with Mock() as urllib2Mock:
  
