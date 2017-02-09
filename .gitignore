@@ -1,4 +1,3 @@
-html-cache/*.html
 conf.py 
 *.log
 *.pyc
