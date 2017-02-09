@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import urllib2
+import sys    
 import os
 import re
 import unittest
@@ -11,7 +11,7 @@ import time
 
 from optparse import OptionParser
 from datetime import datetime
-from ludibrio import Mock 
+
 
 # TODO: add GUI with Kivy
  
@@ -25,7 +25,9 @@ try:
     _MINERS     = conf.MINER_MINERS
     
 except ImportError:
-    pass 
+
+    raise RuntimeError('Please make conf.py (example: conf.py.example)')
+    
  
 logging.basicConfig(filename='mine.log', level=logging.DEBUG)
  
@@ -36,6 +38,16 @@ console.setLevel(logging.INFO)
 log.addHandler(console) 
 
 from notifier import Notifier
+
+
+if sys.version_info[0] == 3:
+    
+    
+    from urllib import request as urllib2
+else:
+    import urllib2
+
+
  
 class MinerInfo():
  
@@ -102,7 +114,7 @@ class MinerInfo():
         
         log.info("login to %s...", domain)
         
-        fileName = "html-cache/%s.html" % domain
+        fileName = os.path.join('html-cache', '%s.html' % domain)
         
         if os.path.exists(fileName) and useCache:
             log.info("using cache file %s", fileName)
@@ -128,7 +140,7 @@ class MinerInfo():
         try:
             pagehandle = self._urllib2Class.urlopen(theurl)
 
-        except urllib2.URLError, e:
+        except urllib2.URLError as e:
 
             log.error('failed to open %s', domain)	
             msg = 'FAILED: %s\n%s' %  (domain, str(e))
@@ -143,7 +155,7 @@ class MinerInfo():
         
         self.SetMinerRawHtmlData(domain, pageData)
 
-        open(fileName, 'w').write(pageData)
+        open(fileName, 'wb').write(pageData)
 
         return True
 
@@ -151,9 +163,9 @@ class MinerInfo():
         
         log.debug("parsing info for %s", domain)
     
-        if self._infoData.has_key(domain):
+        if domain in self._infoData:
             
-            data = self._infoData[domain]['rawHtml']
+            data = str(self._infoData[domain]['rawHtml'])
             
             self._infoData[domain]['asicIdealHashRate'] = ''
             self._infoData[domain]['asicStatusData']	= ''
@@ -327,7 +339,7 @@ class MinerInfo():
     
         out = ''
             
-        if self._infoData.has_key(domain):
+        if domain in self._infoData:
 
             out += '%s:  ' % (domain) 
             out += '%s (%s) [%09s]  ' % (self._infoData[domain]['asicHashRate'],
@@ -494,7 +506,7 @@ class testMiner(unittest.TestCase):
          
         mInfo = MinerInfo()
          
-        mInfo.SetMinerRawHtmlData('domain', open('test-data/testOk.html', 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'testOk.html'), 'r').read())
         mInfo.ParseMinerInfo('domain')
         s = mInfo.MakeMinerInfoDigest('domain')
         s1 = 'domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69|67  \n'
@@ -509,7 +521,7 @@ class testMiner(unittest.TestCase):
          
         mInfo = MinerInfo()
          
-        mInfo.SetMinerRawHtmlData('domain', open('test-data/lowHashRate.html', 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'lowHashRate.html'), 'r').read())
         mInfo.ParseMinerInfo('domain')
          
         msg = ''
@@ -528,7 +540,7 @@ class testMiner(unittest.TestCase):
  
         mInfo = MinerInfo()
          
-        mInfo.SetMinerRawHtmlData('domain', open('test-data/highTemp.html', 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'highTemp.html'), 'r').read())
         mInfo.ParseMinerInfo('domain')
          
         msg = ''
@@ -548,7 +560,7 @@ class testMiner(unittest.TestCase):
          
         mInfo = MinerInfo()
          
-        mInfo.SetMinerRawHtmlData('domain', open('test-data/parseError.html', 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'parseError.html'), 'r').read())
          
         self.assertFalse(mInfo.GetMessageToSend(), "should be no message")
         mInfo.ParseMinerInfo('domain')
@@ -559,7 +571,7 @@ class testMiner(unittest.TestCase):
          
         mInfo = MinerInfo()
          
-        mInfo.SetMinerRawHtmlData('domain', open('test-data/parseError2.html', 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'parseError2.html'), 'r').read())
          
         self.assertFalse(mInfo.GetMessageToSend(), "should be no message")
         mInfo.ParseMinerInfo('domain')
@@ -570,7 +582,7 @@ class testMiner(unittest.TestCase):
          
         mInfo = MinerInfo()
          
-        mInfo.SetMinerRawHtmlData('domain', open('test-data/parseError3.html', 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'parseError3.html'), 'r').read())
          
         self.assertFalse(mInfo.GetMessageToSend(), "should be no message")
         mInfo.ParseMinerInfo('domain')
@@ -578,6 +590,8 @@ class testMiner(unittest.TestCase):
          
         
         log.info("running test: Mock test for network") 
+        
+        from ludibrio import Mock 
          
         with Mock() as urllib2Mock:
  
@@ -594,7 +608,7 @@ class testMiner(unittest.TestCase):
              
             pagehandle = urllib2Mock.urlopen(theurl)
      
-            rawData =   open('test-data/testOk.html', 'r').read()
+            rawData =   open(os.path.join('test-data','testOk.html'), 'r').read()
      
             pagehandle.read() >> rawData
          
@@ -627,7 +641,7 @@ class testMiner(unittest.TestCase):
              
             pagehandle = urllib2Mock.urlopen(theurl)
      
-            rawData =   open('test-data/lowHashRate.html', 'r').read()
+            rawData =   open(os.path.join('test-data', 'lowHashRate.html'), 'r').read()
      
             pagehandle.read() >> rawData
  
@@ -665,7 +679,7 @@ class testMiner(unittest.TestCase):
             
             pagehandle = urllib2Mock1.urlopen(theurl)
     
-            rawData =   open('test-data/testOk.html', 'r').read()
+            rawData =   open(os.path.join('test-data', 'testOk.html'), 'r').read()
     
             pagehandle.read() >> rawData
         
@@ -685,7 +699,7 @@ class testMiner(unittest.TestCase):
              
             pagehandle = urllib2Mock2.urlopen(theurl)
      
-            rawData =   open('test-data/testOk.html', 'r').read()
+            rawData =   open(os.path.join('test-data', 'testOk.html'), 'r').read()
      
             pagehandle.read() >> rawData
             
@@ -757,7 +771,7 @@ if __name__ == "__main__":
 
         os.system('cls' if os.name == 'nt' else 'clear')
     
-        print 'requestig...'
+        print('requestig...')
       
         while True:            
             
@@ -767,10 +781,10 @@ if __name__ == "__main__":
             
             os.system('cls' if os.name == 'nt' else 'clear')
             
-            print '[*] Info ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-            print myData
-            print '[*] Errors'
-            print mySend
+            print('[*] Info ' + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"))
+            print(myData)
+            print('[*] Errors')
+            print(mySend)
             
             time.sleep(options.autoRefreshTime)
             
@@ -784,8 +798,8 @@ if __name__ == "__main__":
         if not options.noNotify:
             Notifier().NotifyRaw("Miner errors", mySend)
         else:
-            print '[!] Errors:'
-            print mySend
+            print('[!] Errors:')
+            print(mySend)
     
             
  

@@ -2,3 +2,7 @@ html-cache/*.html
 conf.py 
 *.log
 *.pyc
+
+.project
+.pydevproject
+.settings/*

@@ -7,8 +7,6 @@ import smtplib
 import logging
 from optparse import OptionParser
 
-from ludibrio import Mock
-
 _SERVER    = 'server:port'
 _USER      = 'user'
 _PASSWORD  = 'password' 
@@ -69,6 +67,8 @@ class testNotifier(unittest.TestCase):
         pass        
         
     def runTest(self):
+
+        from ludibrio import Mock
 
         with Mock() as smtplibMock:
 
