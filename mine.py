@@ -50,12 +50,25 @@ else:
 class MinerInfo():
  
     _infoData = {}
-    _asicStatusOk = 'oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooooooo'
     _messageToSend = ''
     _domains = []
     _notifierClass = Notifier
     _urllib2Class = urllib2
     _notifySingle = False
+    _showRpm = False
+    
+    def __init__(self, domains=0, notifySingle=False, **kw):
+        
+        log.debug("initializing class...")
+        
+        if domains:
+            self.SetDomains(domains)
+            
+        if 'showRpm' in kw:
+            self._showRpm = kw['showRpm']
+            
+        self._notifySingle = notifySingle
+
     
     def SetLibraries(self, notifierClass=None, urllib2Class=None):
         
@@ -89,17 +102,6 @@ class MinerInfo():
     def GetMessageToSend(self):
         
         return self._messageToSend
-        
-    
-    def __init__(self, domains=0, notifySingle=False):
-        
-        log.debug("initializing class...")
-        
-        if domains:
-            self.SetDomains(domains)
-            
-        self._notifySingle = notifySingle
-
 
     def SetMinerRawHtmlData(self, domain, rawData):
         
@@ -117,7 +119,9 @@ class MinerInfo():
         if os.path.exists(fileName) and useCache:
             log.info("using cache file %s", fileName)
             
-            self.SetMinerRawHtmlData(domain, open(fileName, 'r').read())
+            f = open(fileName, 'r')
+            self.SetMinerRawHtmlData(domain, f.read())
+            f.close()
 
             return None
 
@@ -153,7 +157,9 @@ class MinerInfo():
         
         self.SetMinerRawHtmlData(domain, pageData)
 
-        open(fileName, 'wb').write(pageData)
+        f = open(fileName, 'wb') 
+        f.write(pageData)
+        f.close()
 
         return True
 
@@ -178,10 +184,9 @@ class MinerInfo():
             self._infoData[domain]['asicFanMin'] 		= ''
 
             try:
-                r = re.findall('cbi-table-1-status"> (.*?)<', data, re.DOTALL)
-                if not r:
-                    r = re.findall('cbi-table-1-status">(.*?) <', data, re.DOTALL)
-                self._infoData[domain]['asicStatusData']	= r 
+                
+                tableCut = re.search('<table id="ant_devs".*?/table>', data, re.DOTALL)
+                self._infoData[domain]['asicStatusData']    = re.findall('cbi-table-1-status">(.*?)<', tableCut.group(0), re.DOTALL)                
                 self._infoData[domain]['asicChipTemp']		= re.findall('<div id="cbi-table-1-temp2">(.*?)</div>', data, re.DOTALL)
                 self._infoData[domain]['asicBoardTemp']		= re.findall('<div id="cbi-table-1-temp">(.*?)</div>', data, re.DOTALL)
                 self._infoData[domain]['asicHashRate']		= re.search('<div id="ant_ghs5s">(.*?)</div>', data, re.DOTALL).group(1)
@@ -228,7 +233,6 @@ class MinerInfo():
             except IndexError:
             
                 msg = 'No ideal hash rate found' 
-                self.AddMessageToSend(msg + '\n')
                 log.warning(msg)
 
             self._infoData[domain]['asicIdealHashRate'] = idealHashRate
@@ -252,6 +256,9 @@ class MinerInfo():
             assert fanMax
             assert fanMin != maxVal
             
+            self._infoData[domain]['asicFanMaxRpm'] = fanMax
+            self._infoData[domain]['asicFanMinRpm'] = fanMin
+            
             #
             # calculate percentage
             #
@@ -267,24 +274,19 @@ class MinerInfo():
 
     def IsStatusOk(self, status):
     
-        o = ''
-        isOk = 1
-        
-        for line in status:
-            o += '  %s\n' % line
-        
-            if line != self._asicStatusOk:
-                isOk = 0
-        
-        if isOk:
-            return 'OK'
-        else:
-            c = 0
-            for sym in o:
-                if sym == 'x':
-                    c += 1
+        log.debug("IsStatusOk(%s)", status)
+    
+        assert(type(status) == list)
 
+        c = 0
+        for sym in ' '.join(status):
+            if sym == 'x':
+                c += 1
+                
+        if c:
             return '!%d' % c
+        else:
+            return 'OK'
 
 
     def CheckMinerHashRate(self, domain):
@@ -298,6 +300,10 @@ class MinerInfo():
         
         currentHashRate = domainDict['asicHashRate'][:-3].replace(',', '').replace('.', '')
         currentHashRateInt = int(currentHashRate)
+        
+        if not domainDict['asicIdealHashRate']:
+            log.warning('can\'t calculate "normal" hashrate because ideal hashrate is missing')
+            return
         
         idealHashRate = domainDict['asicIdealHashRate'][:-3].replace(',', '').replace('.', '')
         idealHashRateInt = int(idealHashRate)
@@ -323,6 +329,12 @@ class MinerInfo():
 
         assert self._infoData[domain] 
         domainDict = self._infoData[domain]
+        
+        log.debug("CheckMinerTemp() %s", str(domainDict['asicChipTemp']))
+        
+        if not domainDict['asicChipTemp']:
+            log.warning("can't check miner temp because chip temp is missing")
+            return
         
         maxTemp = 0
         for temp in domainDict['asicChipTemp']:
@@ -362,9 +374,13 @@ class MinerInfo():
             else:
                 out += '%-12s  ' % ' '.join((self._infoData[domain]['asicBoardTemp']))
 
-                
-            out += '%s|%s  ' % (self._infoData[domain]['asicFanMax'] + '%', 
-                self._infoData[domain]['asicFanMin'] + '%')
+            if self._showRpm:
+                out += '%s|%s  ' % (self._infoData[domain]['asicFanMaxRpm'], 
+                    self._infoData[domain]['asicFanMinRpm'])
+
+            else:    
+                out += '%s|%s  ' % (self._infoData[domain]['asicFanMax'] + '%', 
+                    self._infoData[domain]['asicFanMin'] + '%')
             
             out += '\n'
         
@@ -423,10 +439,10 @@ class MinerInfoThread(threading.Thread):
     _data = ''
     _dataToSend = ''
     
-    def __init__(self, domain, notifierClass=None, urllib2Class=None):
+    def __init__(self, domain, notifierClass=None, urllib2Class=None, **kw):
         threading.Thread.__init__(self)
         self._domain = domain    
-        self._minerInfo = MinerInfo([self._domain])
+        self._minerInfo = MinerInfo([self._domain], **kw)
         self._minerInfo.SetLibraries(notifierClass, urllib2Class)
 
         log.debug("miner thread created for domain %s", domain)
@@ -448,7 +464,7 @@ class MinerInfoMultithreaded():
     _infoData = ''
     _dataToSend = ''
     
-    def __init__(self, miners, notifierClasses=None, urllib2Classes=None):
+    def __init__(self, miners, notifierClasses=None, urllib2Classes=None, **kw):
         
         self._threads = []
         
@@ -456,22 +472,22 @@ class MinerInfoMultithreaded():
             
             notifierClass = None
             urllib2Class = None
-            
+             
             if notifierClasses:
                 notifierClass = notifierClasses[i]
-                
+                 
             if urllib2Classes:
                 urllib2Class = urllib2Classes[i]
                 
             domain = miners[i]
             
-            thread = MinerInfoThread(domain, notifierClass=notifierClass, urllib2Class=urllib2Class)
+            thread = MinerInfoThread(domain, notifierClass=notifierClass, urllib2Class=urllib2Class, **kw)
             
             self._threads.append(thread)
 
         log.debug("created multithreaded object [thread count = %d]", len(self._threads))            
             
-    def MakeAllInfo(self):
+    def MakeAllInfoMulti(self):
         
         log.debug("running all threads [%d]", len(self._threads))
         
@@ -506,21 +522,29 @@ class testMiner(unittest.TestCase):
          
         mInfo = MinerInfo()
          
-        status = mInfo.IsStatusOk('oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooooooo')
-        self.assertEqual("!0", status, "test should be OK")
+        status = mInfo.IsStatusOk(['oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooooooo',
+                                   'oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooooooo',
+                                   'oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooooooo'])
+        self.assertEqual("OK", status, "test should be OK")
  
-        status = mInfo.IsStatusOk('oooooooo oooooooo oooooooo oooooooo oooooooo oooxoooo oooooooo ooooooo')
+        status = mInfo.IsStatusOk(['oooooooo oooooooo oooooooo oooooooo oooooooo oooxoooo oooooooo ooooooo',
+                                   'oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooooooo',
+                                   'oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo oooooooo ooooooo'])
         self.assertEqual("!1", status, "test should find one error")
  
-        status = mInfo.IsStatusOk('oxoooooo oooxoooo ooxooooo oooooxoo ooooooxo oooxoooo oxooxooo oxooxoo')
+        status = mInfo.IsStatusOk(['oxoooooo oooxoooo ooxooooo oooooxoo ooooooxo oooxoooo oxooxooo oxooxoo'])
         self.assertEqual("!10", status, "test should find ten errors")
          
                   
         log.info("running test: OK test")
          
         mInfo = MinerInfo()
+        
+        f = open(os.path.join('test-data', 'testOk.html'), 'r')
+        dat = f.read()
+        f.close()
          
-        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'testOk.html'), 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', dat)
         mInfo.ParseMinerInfo('domain')
         s = mInfo.MakeMinerInfoDigest('domain')
         s1 = 'domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  \n'
@@ -534,8 +558,12 @@ class testMiner(unittest.TestCase):
         log.info("running test: low hashrate test")
          
         mInfo = MinerInfo()
+        
+        f = open(os.path.join('test-data', 'lowHashRate.html'), 'r')
+        dat = f.read()
+        f.close()
          
-        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'lowHashRate.html'), 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', dat)
         mInfo.ParseMinerInfo('domain')
          
         msg = ''
@@ -553,8 +581,11 @@ class testMiner(unittest.TestCase):
         log.info("running test: high temp test")
  
         mInfo = MinerInfo()
-         
-        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'highTemp.html'), 'r').read())
+        
+        f = open(os.path.join('test-data', 'highTemp.html'), 'r')
+        dat = f.read()
+        f.close()
+        mInfo.SetMinerRawHtmlData('domain', dat)
         mInfo.ParseMinerInfo('domain')
          
         msg = ''
@@ -573,8 +604,12 @@ class testMiner(unittest.TestCase):
         log.info("running test: Parse error 1")
          
         mInfo = MinerInfo()
+
+        f = open(os.path.join('test-data', 'parseError.html'), 'r')
+        dat = f.read()
+        f.close()
          
-        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'parseError.html'), 'r').read())
+        mInfo.SetMinerRawHtmlData('domain', dat)
          
         self.assertFalse(mInfo.GetMessageToSend(), "should be no message")
         mInfo.ParseMinerInfo('domain')
@@ -584,8 +619,12 @@ class testMiner(unittest.TestCase):
         log.info("running test: Parse error 2")
          
         mInfo = MinerInfo()
-         
-        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'parseError2.html'), 'r').read())
+        
+        f = open(os.path.join('test-data', 'parseError2.html'), 'r')
+        dat = f.read()
+        f.close()
+        
+        mInfo.SetMinerRawHtmlData('domain', dat)
          
         self.assertFalse(mInfo.GetMessageToSend(), "should be no message")
         mInfo.ParseMinerInfo('domain')
@@ -595,12 +634,16 @@ class testMiner(unittest.TestCase):
         log.info("running test: Parse error 3")
          
         mInfo = MinerInfo()
-         
-        mInfo.SetMinerRawHtmlData('domain', open(os.path.join('test-data', 'parseError3.html'), 'r').read())
+        
+        f = open(os.path.join('test-data', 'parseError3.html'), 'r')
+        dat = f.read()
+        f.close()
+        
+        mInfo.SetMinerRawHtmlData('domain', dat)
          
         self.assertFalse(mInfo.GetMessageToSend(), "should be no message")
         mInfo.ParseMinerInfo('domain')
-        self.assertTrue(mInfo.GetMessageToSend(), "should be message")
+        self.assertFalse(mInfo.GetMessageToSend(), "should be no message")
          
         
         log.info("running test: Mock test for network") 
@@ -613,7 +656,9 @@ class testMiner(unittest.TestCase):
             
             from mock import MagicMock
         
-        data = open(os.path.join('test-data','testOk.html'), 'rb').read()
+        f = open(os.path.join('test-data','testOk.html'), 'rb')
+        data = f.read()
+        f.close()
         
         urllib2Mock = MagicMock()
         pageHandleMock = MagicMock()
@@ -638,8 +683,10 @@ class testMiner(unittest.TestCase):
         log.info("running test: Mock test for notifier")
         
         notifierMock = MagicMock() 
-         
-        data = open(os.path.join('test-data','lowHashRate.html'), 'rb').read()
+        
+        f = open(os.path.join('test-data','lowHashRate.html'), 'rb')
+        data = f.read()
+        f.close()
         
         urllib2Mock = MagicMock()
         pageHandleMock = MagicMock()
@@ -667,7 +714,9 @@ class testMiner(unittest.TestCase):
 
         log.info("running test: Mutithreaded test")
 
-        data = open(os.path.join('test-data','testOk.html'), 'rb').read()
+        f = open(os.path.join('test-data','testOk.html'), 'rb')
+        data = f.read()
+        f.close()
         
         urllib2Mock = MagicMock()
         pageHandleMock = MagicMock()
@@ -686,7 +735,7 @@ class testMiner(unittest.TestCase):
          
         multi = MinerInfoMultithreaded(domains, notifiers, urllib2s)
          
-        d, s = multi.MakeAllInfo()
+        d, s = multi.MakeAllInfoMulti()
         
         textResult = """domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  
 domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  
@@ -702,7 +751,9 @@ domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 
         
         log.info("running test: s7 html test")
         
-        data = open(os.path.join('test-data','s7.html'), 'rb').read()
+        f = open(os.path.join('test-data','s7.html'), 'rb')
+        data = f.read()
+        f.close()
         
         urllib2Mock = MagicMock()
         pageHandleMock = MagicMock()
@@ -722,7 +773,59 @@ domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 
                   
         self.assertEqual(len(pageHandleMock.mock_calls), 1)
         self.assertEqual(len(urllib2Mock.mock_calls), 7)
+        self.assertEqual(mInfo.GetMessageToSend(), '')
         
+        log.info("running test: s7-1 html test")
+        
+        f = open(os.path.join('test-data','s7-1.html'), 'rb')
+        data = f.read()
+        f.close()
+        
+        urllib2Mock = MagicMock()
+        pageHandleMock = MagicMock()
+                
+        attrs = {'urlopen.return_value': pageHandleMock,}
+        urllib2Mock.configure_mock(**attrs)
+
+        attrs = {'read.return_value': data,}
+        pageHandleMock.configure_mock(**attrs)
+         
+        mInfo = MinerInfo(['domain'])
+        mInfo.SetLibraries(None, urllib2Class=urllib2Mock)
+                  
+        s = mInfo.MakeAllInfo()
+        
+        self.assertEqual('domain:  4,889.69 (4,717.43)  0.0018%   6d17h5m6s     OK  41 47 46      65%|63%  \n', s, "comparing text")        
+                  
+        self.assertEqual(len(pageHandleMock.mock_calls), 1)
+        self.assertEqual(len(urllib2Mock.mock_calls), 7)        
+
+        log.info("running test: s7-2 html test")
+        
+        f = open(os.path.join('test-data','s7-2.html'), 'rb')
+        data = f.read()
+        f.close()
+        
+        urllib2Mock = MagicMock()
+        pageHandleMock = MagicMock()
+                
+        attrs = {'urlopen.return_value': pageHandleMock,}
+        urllib2Mock.configure_mock(**attrs)
+
+        attrs = {'read.return_value': data,}
+        pageHandleMock.configure_mock(**attrs)
+         
+        mInfo = MinerInfo(['domain'])
+        mInfo.SetLibraries(None, urllib2Class=urllib2Mock)
+                  
+        s = mInfo.MakeAllInfo()
+        
+        self.assertEqual('domain:  1,620.13 (1,572.64)  0.0004%  6d17h26m9s     OK  53            69%|69%  \n', s, "comparing text")        
+                  
+        self.assertEqual(len(pageHandleMock.mock_calls), 1)
+        self.assertEqual(len(urllib2Mock.mock_calls), 7)      
+
+
         log.info('*** All tests OK ***')
         
 
@@ -733,23 +836,28 @@ if __name__ == "__main__":
     
     parser.add_option("-v", "--verbose",
                       action="store_true", dest="verbose", default=False,
-                      help="Show debug messages")
+                      help="show debug messages")
     
     parser.add_option("-n", "--no-mail-notify",
                       action="store_true", dest="noNotify", default=False,
-                      help="Do not send any email notifications")
+                      help="do not send any email notifications")
 
     parser.add_option("-f", "--auto-refresh",
                       action="store_true", dest="autoRefresh", default=False,
-                      help="Auto refresh data on console")
+                      help="auto refresh data on console")
 
     parser.add_option("-t", "--auto-refresh-time", type="int",
                       action="store", dest="autoRefreshTime", default=3,
-                      help="Auto refresh time. Valid for -f option only. Default value 3 seconds")
+                      help="auto refresh time. Valid for -f option only. Default value is 3 seconds")
+
+    parser.add_option("-r", "--show-rpm", 
+                      action="store_true", dest="showRpm", default=False,
+                      help="shows rpm instead of percent")
 
     
+    
     (options, args) = parser.parse_args()
-        
+            
     if options.verbose:
         console.setLevel(logging.DEBUG)    
     
@@ -767,9 +875,9 @@ if __name__ == "__main__":
       
         while True:            
             
-            multiInfo = MinerInfoMultithreaded(_MINERS)
+            multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm)
          
-            myData, mySend = multiInfo.MakeAllInfo()
+            myData, mySend = multiInfo.MakeAllInfoMulti()
             
             os.system('cls' if os.name == 'nt' else 'clear')
             
@@ -780,9 +888,9 @@ if __name__ == "__main__":
             
             time.sleep(options.autoRefreshTime)
             
-    multiInfo = MinerInfoMultithreaded(_MINERS)
+    multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm)
          
-    myData, mySend = multiInfo.MakeAllInfo()
+    myData, mySend = multiInfo.MakeAllInfoMulti()
     
     log.info("%s", myData)
     
