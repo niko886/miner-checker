@@ -193,14 +193,14 @@ class MinerInfo():
                 self._infoData[domain]['asicFan1Elapsed']	= re.search('<div id="ant_elapsed">(.*?)</div>', data, re.DOTALL).group(1)
 
             except IndexError as e:
-                msg = "Parsing error 1 on %s: %s" % (domain, e.message)
+                msg = "Parsing error 1 on %s: %s" % (domain, e)
                 
                 self.AddMessageToSend(msg + '\n')
 
                 return
             
             except AttributeError as e:
-                msg = "Parsing error 2 on %s: %s" % (domain, e.message)
+                msg = "Parsing error 2 on %s: %s" % (domain, e)
                 
                 self.AddMessageToSend(msg + '\n')
 
@@ -390,12 +390,12 @@ class MinerInfo():
                 try:
                     self.CheckMinerHashRate(dom)
                 except ValueError as v:
-                    self.AddMessageToSend(v.message + '\n')
+                    self.AddMessageToSend(str(v) + '\n')
                     
                 try:
                     self.CheckMinerTemp(dom)
                 except ValueError as v:
-                    self.AddMessageToSend(v.message + '\n')
+                    self.AddMessageToSend(str(v) + '\n')
             
         
         return out
@@ -543,7 +543,7 @@ class testMiner(unittest.TestCase):
         try:
             mInfo.CheckMinerHashRate('domain')
         except ValueError as v:
-            msg = v.message
+            msg = v
          
         self.assertTrue(msg, 'low hashrate test')
          
@@ -562,7 +562,7 @@ class testMiner(unittest.TestCase):
         try:
             mInfo.CheckMinerTemp('domain')
         except ValueError as v:
-            msg = v.message
+            msg = v
          
         self.assertTrue(msg, 'too high temp test')
          
@@ -605,127 +605,84 @@ class testMiner(unittest.TestCase):
         
         log.info("running test: Mock test for network") 
         
-        from ludibrio import Mock 
-         
-        with Mock() as urllib2Mock:
- 
-            theurl = 'http://%s/cgi-bin/minerStatus.cgi' % 'domain'
- 
-            passman = urllib2Mock.HTTPPasswordMgrWithDefaultRealm()
-             
-            passman.add_password(None, theurl, _USERNAME, _PASSWORD)
-             
-            authhandler = urllib2Mock.HTTPDigestAuthHandler(passman)
-             
-            opener = urllib2Mock.build_opener(authhandler)
-            urllib2Mock.install_opener(opener)
-             
-            pagehandle = urllib2Mock.urlopen(theurl)
-     
-            rawData =   open(os.path.join('test-data','testOk.html'), 'r').read()
-     
-            pagehandle.read() >> rawData
+        if sys.version_info[0] == 3:
+            
+            from unittest.mock import MagicMock
+            
+        else:
+            
+            from mock import MagicMock
+        
+        data = open(os.path.join('test-data','testOk.html'), 'rb').read()
+        
+        urllib2Mock = MagicMock()
+        pageHandleMock = MagicMock()
+                
+        attrs = {'urlopen.return_value': pageHandleMock,}
+        urllib2Mock.configure_mock(**attrs)
+
+        attrs = {'read.return_value': data,}
+        pageHandleMock.configure_mock(**attrs)
          
         mInfo = MinerInfo(['domain'])
         mInfo.SetLibraries(None, urllib2Class=urllib2Mock)
-         
+        
         s = mInfo.Info()
-         
+        
+        self.assertEqual(len(pageHandleMock.mock_calls), 1)
+        self.assertEqual(len(urllib2Mock.mock_calls), 7)
         self.assertEqual("domain:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 78      69%|67%  \n", 
-                         s, "urllib2 mock test")
-         
-        urllib2Mock.validate()
+                 s, "urllib2 mock test")
         
         
-        log.info("running test: Mock test for notifier") 
+        log.info("running test: Mock test for notifier")
+        
+        notifierMock = MagicMock() 
          
-        with Mock() as urllib2Mock:
- 
-            theurl = 'http://%s/cgi-bin/minerStatus.cgi' % 'domain'
- 
-            passman = urllib2Mock.HTTPPasswordMgrWithDefaultRealm()
-             
-            passman.add_password(None, theurl, _USERNAME, _PASSWORD)
-             
-            authhandler = urllib2Mock.HTTPDigestAuthHandler(passman)
-             
-            opener = urllib2Mock.build_opener(authhandler)
-            urllib2Mock.install_opener(opener)
+        data = open(os.path.join('test-data','lowHashRate.html'), 'rb').read()
+        
+        urllib2Mock = MagicMock()
+        pageHandleMock = MagicMock()
+                
+        attrs = {'urlopen.return_value': pageHandleMock,}
+        urllib2Mock.configure_mock(**attrs)
+
+        attrs = {'read.return_value': data,}
+        pageHandleMock.configure_mock(**attrs)
          
-             
-            pagehandle = urllib2Mock.urlopen(theurl)
-     
-            rawData =   open(os.path.join('test-data', 'lowHashRate.html'), 'r').read()
-     
-            pagehandle.read() >> rawData
- 
-        with Mock() as notifierMock:
-             
-            notifierMock().NotifyRaw('Some error with miners', 'miner domain hashrate is to low (11845 < 14004 - 10 percent)\n\ndomain:  11,845.93 (13,849.65) [14,004.90]  0.0007%  13d8h26m24s     OK  75 96 78      69%|65%  \n')
- 
         mInfo = MinerInfo(['domain'], notifySingle=True)
         mInfo.SetLibraries(notifierClass=notifierMock, urllib2Class=urllib2Mock)
          
         s = mInfo.Info()
          
         self.assertEqual("domain:  11,845.93 (13,849.65) [14,004.90]  0.0007%  13d8h26m24s     OK  75 96 78      69%|65%  \n", 
-                         s, "notifier mock test")
-         
-        notifierMock.validate()
-        urllib2Mock.validate()
+                         s, "notifier mock test")    
+
+        calls = notifierMock.mock_calls
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1][0], '().NotifyRaw')
+        self.assertEqual(calls[1][1], ('Some error with miners', 
+                              'miner domain hashrate is to low (11845 < 14004 - 10 percent)\n\ndomain:  11,845.93 (13,849.65) [14,004.90]  0.0007%  13d8h26m24s     OK  75 96 78      69%|65%  \n'))
 
 
         log.info("running test: Mutithreaded test")
+
+        data = open(os.path.join('test-data','testOk.html'), 'rb').read()
+        
+        urllib2Mock = MagicMock()
+        pageHandleMock = MagicMock()
                 
-        with Mock() as urllib2Mock1:
+        attrs = {'urlopen.return_value': pageHandleMock,}
+        urllib2Mock.configure_mock(**attrs)
 
-            theurl = 'http://%s/cgi-bin/minerStatus.cgi' % 'domain'
-
-            passman = urllib2Mock1.HTTPPasswordMgrWithDefaultRealm()
-            
-            passman.add_password(None, theurl, _USERNAME, _PASSWORD)
-            
-            authhandler = urllib2Mock1.HTTPDigestAuthHandler(passman)
-            
-            opener = urllib2Mock1.build_opener(authhandler)
-            urllib2Mock1.install_opener(opener)
+        attrs = {'read.return_value': data,}
+        pageHandleMock.configure_mock(**attrs)
         
-            
-            pagehandle = urllib2Mock1.urlopen(theurl)
-    
-            rawData =   open(os.path.join('test-data', 'testOk.html'), 'r').read()
-    
-            pagehandle.read() >> rawData
-        
-        with Mock() as urllib2Mock2:
- 
-            theurl = 'http://%s/cgi-bin/minerStatus.cgi' % 'domain2'
- 
-            passman = urllib2Mock2.HTTPPasswordMgrWithDefaultRealm()
-             
-            passman.add_password(None, theurl, _USERNAME, _PASSWORD)
-             
-            authhandler = urllib2Mock2.HTTPDigestAuthHandler(passman)
-             
-            opener = urllib2Mock2.build_opener(authhandler)
-            urllib2Mock2.install_opener(opener)
-         
-             
-            pagehandle = urllib2Mock2.urlopen(theurl)
-     
-            rawData =   open(os.path.join('test-data', 'testOk.html'), 'r').read()
-     
-            pagehandle.read() >> rawData
-            
-        with Mock() as notifierMock1:
-            pass
-        
-        with Mock() as notifierMock2:
-            pass
+        notifierMock = MagicMock()
         
         domains = ['domain', 'domain2']
-        urllib2s = [urllib2Mock1, urllib2Mock2]
-        notifiers = [notifierMock1, notifierMock2]
+        urllib2s = [urllib2Mock, urllib2Mock]
+        notifiers = [notifierMock, notifierMock]
          
         multi = MinerInfoMultithreaded(domains, notifiers, urllib2s)
          
@@ -740,45 +697,33 @@ domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 
         self.assertEqual(d, textResult, "comparing text")
         self.assertEqual(s, messageResult, "comparing message to send text")
         
-        urllib2Mock1.validate()
-        urllib2Mock2.validate()
-        notifierMock1.validate()
-        notifierMock2.validate()
-        
-        
+        self.assertEqual(len(urllib2Mock.mock_calls), 14)
+        self.assertFalse(notifierMock.mock_calls)
         
         log.info("running test: s7 html test")
         
-         
-         
-        with Mock() as urllib2Mock:
- 
-            theurl = 'http://%s/cgi-bin/minerStatus.cgi' % 'domain'
- 
-            passman = urllib2Mock.HTTPPasswordMgrWithDefaultRealm()
-             
-            passman.add_password(None, theurl, _USERNAME, _PASSWORD)
-             
-            authhandler = urllib2Mock.HTTPDigestAuthHandler(passman)
-             
-            opener = urllib2Mock.build_opener(authhandler)
-            urllib2Mock.install_opener(opener)
-             
-            pagehandle = urllib2Mock.urlopen(theurl)
-     
-            rawData =   open(os.path.join('test-data','s7.html'), 'r').read()
-     
-            pagehandle.read() >> rawData
-         
+        data = open(os.path.join('test-data','s7.html'), 'rb').read()
+        
+        urllib2Mock = MagicMock()
+        pageHandleMock = MagicMock()
+                
+        attrs = {'urlopen.return_value': pageHandleMock,}
+        urllib2Mock.configure_mock(**attrs)
+
+        attrs = {'read.return_value': data,}
+        pageHandleMock.configure_mock(**attrs)
          
         mInfo = MinerInfo(['domain'])
         mInfo.SetLibraries(None, urllib2Class=urllib2Mock)
-         
+                  
         s = mInfo.MakeAllInfo()
         
         self.assertEqual('domain:  4,565.38 (4,716.19)  0.0017%  4d16h21m47s     !2  38 45 43      61%|59%  \n', s, "comparing text")        
                   
-        urllib2Mock.validate()
+        self.assertEqual(len(pageHandleMock.mock_calls), 1)
+        self.assertEqual(len(urllib2Mock.mock_calls), 7)
+        
+        log.info('*** All tests OK ***')
         
 
 
