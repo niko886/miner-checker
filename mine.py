@@ -8,6 +8,7 @@ import unittest
 import threading
 import logging
 import time
+import tempfile
 
 from optparse import OptionParser
 from datetime import datetime
@@ -17,16 +18,26 @@ from datetime import datetime
  
 _VERSION_ = "0.0.2"
 
-try:
-    import conf
+def setupConfig():
     
-    _USERNAME   = conf.MINER_USERNAME
-    _PASSWORD   = conf.MINER_PASSWORD
-    _MINERS     = conf.MINER_MINERS
+    log.debug("conf.py setup")
     
-except ImportError:
-
-    raise RuntimeError('Please make conf.py (example: conf.py.example)')
+    try:
+        import conf
+        
+        global _USERNAME
+        global _PASSWORD
+        global _MINERS
+        
+        _USERNAME   = conf.MINER_USERNAME
+        _PASSWORD   = conf.MINER_PASSWORD
+        _MINERS     = conf.MINER_MINERS
+        
+        log.debug("conf.py imported")
+        
+    except ImportError:
+    
+        raise RuntimeError('Please make conf.py (example: conf.py.example)')
     
  
 logging.basicConfig(filename='mine.log', level=logging.DEBUG)
@@ -56,6 +67,7 @@ class MinerInfo():
     _urllib2Class = urllib2
     _notifySingle = False
     _showRpm = False
+    _cachePath = ''
     
     def __init__(self, domains=0, notifySingle=False, **kw):
         
@@ -68,6 +80,19 @@ class MinerInfo():
             self._showRpm = kw['showRpm']
             
         self._notifySingle = notifySingle
+        
+        cachePath = kw.get('cachePath', '')
+         
+        if cachePath:
+            self._cachePath = cachePath
+        else:
+            cachePath = os.path.join(tempfile.gettempdir(), 'miner-checker', 'html-cache')
+            try:
+                os.makedirs(cachePath)
+            except OSError as oe:
+                pass
+            log.debug('cache path: %s', cachePath)
+            self._cachePath = cachePath
 
     
     def SetLibraries(self, notifierClass=None, urllib2Class=None):
@@ -114,7 +139,7 @@ class MinerInfo():
         
         log.debug("login to %s...", domain)
         
-        fileName = os.path.join('html-cache', '%s.html' % domain)
+        fileName = os.path.join(self._cachePath, '%s.html' % domain)
         
         if os.path.exists(fileName) and useCache:
             log.info("using cache file %s", fileName)
@@ -444,7 +469,7 @@ class MinerInfoThread(threading.Thread):
         self._domain = domain    
         self._minerInfo = MinerInfo([self._domain], **kw)
         self._minerInfo.SetLibraries(notifierClass, urllib2Class)
-
+                
         log.debug("miner thread created for domain %s", domain)
             
     def run(self):
@@ -854,16 +879,37 @@ if __name__ == "__main__":
                       action="store_true", dest="showRpm", default=False,
                       help="shows rpm instead of percent")
 
-    
-    
+    parser.add_option("-w", "--work-path", type="string",
+                      action="store", dest="workPath", default='',
+                      help="change default program work path")
+
+    parser.add_option("-c", "--cache-path", type="string",
+                      action="store", dest="cachePath", default='',
+                      help="change default program cache path")
+
+
     (options, args) = parser.parse_args()
-            
+           
     if options.verbose:
         console.setLevel(logging.DEBUG)    
     
     if args:
         parser.print_help()
         exit(-1)
+        
+    if options.workPath:
+        wp = os.path.abspath(os.path.expanduser(options.workPath))
+        log.debug("work path set: %s", wp)
+        sys.path.append(wp)
+
+    cachePath = options.cachePath
+    if cachePath:
+        cachePath = os.path.abspath(os.path.expanduser(cachePath))
+        log.debug("cache path set: %s", cachePath)
+            
+    log.debug("call setupConfig()")
+    setupConfig()
+
 
     if options.autoRefresh:
 
@@ -875,7 +921,8 @@ if __name__ == "__main__":
       
         while True:            
             
-            multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm)
+            multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm,
+                                               cachePath=options.cachePath)
          
             myData, mySend = multiInfo.MakeAllInfoMulti()
             
@@ -888,7 +935,7 @@ if __name__ == "__main__":
             
             time.sleep(options.autoRefreshTime)
             
-    multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm)
+    multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm, cachePath=cachePath)
     
     log.info(datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S, requesting..."))
          
