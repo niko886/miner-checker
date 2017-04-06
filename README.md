@@ -9,7 +9,7 @@ Simple program that helps you to watch what happening with your miners in *realt
 
 ## Install and run
 
-* Setup python 2.x 
+* Setup python 2.x or 3.x
 * Make conf.py from conf.py.example with your own data
 * Run mine.py from console
 

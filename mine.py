@@ -112,7 +112,7 @@ class MinerInfo():
 
     def RequestMinerHttp(self, domain, useCache=0):
         
-        log.info("login to %s...", domain)
+        log.debug("login to %s...", domain)
         
         fileName = os.path.join('html-cache', '%s.html' % domain)
         
@@ -889,6 +889,8 @@ if __name__ == "__main__":
             time.sleep(options.autoRefreshTime)
             
     multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm)
+    
+    log.info(datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S, requesting..."))
          
     myData, mySend = multiInfo.MakeAllInfoMulti()
     
