@@ -13,31 +13,56 @@ import tempfile
 from optparse import OptionParser
 from datetime import datetime
 
-
-# TODO: add GUI with Kivy
  
 _VERSION_ = "0.0.2"
 
-def setupConfig():
+class setupConfig():    
     
-    log.debug("conf.py setup")
+    _MINER_RULES_PARSED = {}
     
-    try:
-        import conf
+    def parseMinersAndRules(self):
+                        
+        for miner in self._MINERS:
+                        
+            rules = self._MINER_RULES
+            rulesKeys = rules.keys()
+            
+            miner = miner.replace('*', '(.*?)')
+            
+            for k in rulesKeys:
+                
+                log.debug('searching: %s in %s', k, miner)
+                
+                if re.search(k, miner):
+                    self._MINER_RULES_PARSED[miner] = rules[k]
+                                
+    def getMinerConfig(self, miner):
         
-        global _USERNAME
-        global _PASSWORD
-        global _MINERS
+        r = self._MINER_RULES_PARSED.get(miner, {})
+        log.debug("miner config: %s: %s", miner, r)
+        return r
         
-        _USERNAME   = conf.MINER_USERNAME
-        _PASSWORD   = conf.MINER_PASSWORD
-        _MINERS     = conf.MINER_MINERS
-        
-        log.debug("conf.py imported")
-        
-    except ImportError:
     
-        raise RuntimeError('Please make conf.py (example: conf.py.example)')
+    def __init__(self):
+    
+        log.debug("conf.py setup")
+        
+        try:
+            import conf
+            
+            self._USERNAME     = conf.MINER_USERNAME
+            self._PASSWORD     = conf.MINER_PASSWORD
+            self._MINERS       = conf.MINER_MINERS
+            self._MINER_RULES  = conf.MINER_RULES
+            self._MINER_RULES_PARSED = {}
+            
+            log.debug("conf.py imported")
+            
+        except ImportError:
+        
+            raise RuntimeError('Please make conf.py (example: conf.py.example)')
+        
+        
     
  
 logging.basicConfig(filename='mine.log', level=logging.DEBUG)
@@ -151,8 +176,8 @@ class MinerInfo():
             return None
 
         theurl = 'http://%s/cgi-bin/minerStatus.cgi' % domain
-        username = _USERNAME
-        password = _PASSWORD		
+        username = sc._USERNAME
+        password = sc._PASSWORD		
         
         log.debug("calling self._urllib2Class.HTTPPasswordMgrWithDefaultRealm()...")
         passman = self._urllib2Class.HTTPPasswordMgrWithDefaultRealm()
@@ -348,10 +373,7 @@ class MinerInfo():
 
         
     def CheckMinerTemp(self, domain):
-        '''
-            If miner temp > 103 degrees and fan speed is more than 90%, than it is no good...
-        '''
-
+        
         assert self._infoData[domain] 
         domainDict = self._infoData[domain]
         
@@ -368,7 +390,7 @@ class MinerInfo():
                 
         log.debug("%s fan speed percent: current %d, max = %s", domain, maxTemp, domainDict['asicFanMax'])
                 
-        if maxTemp > 103 and int(domainDict['asicFanMax']) > 90:
+        if maxTemp > sc.getMinerConfig(domain)['maxTemp']: # you can also int(domainDict['asicFanMax']) for example
             raise ValueError('miner %s high temp reached (temp = %d, max fan rpm = %s)' %
                              (domain, maxTemp, domainDict['asicFanMax']))
 
@@ -541,9 +563,14 @@ class testMiner(unittest.TestCase):
         
     def runTest(self):
         
+        console.setLevel(logging.DEBUG)
+        
         log.info("running self-tests")
          
         log.debug("running test: IsStatusOk test")
+        
+        global sc
+        sc = setupConfig()
          
         mInfo = MinerInfo()
          
@@ -850,6 +877,40 @@ domain2:  13,829.06 (13,849.75) [14,004.90]  0.0007%  13d7h38m34s     OK  75 95 
         self.assertEqual(len(pageHandleMock.mock_calls), 1)
         self.assertEqual(len(urllib2Mock.mock_calls), 7)      
 
+        sc2 = setupConfig()
+        sc2._MINERS = ['192.168.0.1']
+        sc2._MINER_RULES = {'192.168.0.1': {'maxTemp': 90} }
+        sc2.parseMinersAndRules()
+        
+        rules = sc2.getMinerConfig('192.168.0.1')
+                
+        self.assertEqual(rules['maxTemp'], 90)
+
+
+        sc2 = setupConfig()
+        sc2._MINERS = ['192.168.0.1', '192.168.0.255']
+        
+        isException = False
+                
+        try:
+            sc2.getMinerConfig('192.168.0.')['maxTemp']
+        except KeyError:
+            isException = True
+            
+        self.assertTrue(isException)
+                
+        sc2._MINER_RULES = {'192.168.0.*': {'maxTemp': 93} }
+        sc2.parseMinersAndRules()
+        
+        rules = sc2.getMinerConfig('192.168.0.1')
+        self.assertEqual(rules['maxTemp'], 93)
+
+        rules = sc2.getMinerConfig('192.168.0.255')
+        self.assertEqual(rules['maxTemp'], 93)
+
+
+        rules = sc2.getMinerConfig('192.168.1.1')
+        self.assertEqual(rules, {})
 
         log.info('*** All tests OK ***')
         
@@ -908,7 +969,10 @@ if __name__ == "__main__":
         log.debug("cache path set: %s", cachePath)
             
     log.debug("call setupConfig()")
-    setupConfig()
+    
+    global sc
+    sc = setupConfig()
+    sc.parseMinersAndRules()
 
 
     if options.autoRefresh:
@@ -921,7 +985,7 @@ if __name__ == "__main__":
       
         while True:            
             
-            multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm,
+            multiInfo = MinerInfoMultithreaded(sc._MINERS, showRpm=options.showRpm,
                                                cachePath=options.cachePath)
          
             myData, mySend = multiInfo.MakeAllInfoMulti()
@@ -935,7 +999,7 @@ if __name__ == "__main__":
             
             time.sleep(options.autoRefreshTime)
             
-    multiInfo = MinerInfoMultithreaded(_MINERS, showRpm=options.showRpm, cachePath=cachePath)
+    multiInfo = MinerInfoMultithreaded(sc._MINERS, showRpm=options.showRpm, cachePath=cachePath)
     
     log.info(datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S, requesting..."))
          

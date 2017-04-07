@@ -7,6 +7,6 @@ MAIL_TOADDR    = 'yourmail@gmail.com'
 
 MINER_USERNAME = 'root'
 MINER_PASSWORD = 'root'
-MINER_MINERS = ['192.168.0.101',  
-           '192.168.0.102',
-           ]
+MINER_MINERS = ['192.168.0.101', '192.168.0.102', ]
+           
+MINER_RULES = {'192.168.0.*': {'maxTemp': 100}, }
