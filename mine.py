@@ -359,13 +359,13 @@ class MinerInfo():
         idealHashRateInt = int(idealHashRate)
         
         delta = idealHashRateInt - currentHashRateInt
-        ideal10 = idealHashRateInt * 0.10
+        ideal10 = idealHashRateInt * 0.30
         
         log.debug("%s hashrate: ideal %s, current %s", domain, currentHashRate, idealHashRate)
         
         if delta > ideal10:
             
-            log.error('miner %s hashrate is to low (%s < %s - 10 percent)', domain,
+            log.error('miner %s hashrate is to low (%s < %s - 30 percent)', domain,
                              currentHashRate, idealHashRate)
             
             raise ValueError('miner %s hashrate is to low (%s < %s - 10 percent)' % (domain,
@@ -382,9 +382,17 @@ class MinerInfo():
         if not domainDict['asicChipTemp']:
             log.warning("can't check miner temp because chip temp is missing")
             return
-        
+       
+
+	
+	 
         maxTemp = 0
         for temp in domainDict['asicChipTemp']:
+
+            if temp == '-':
+                temp = '0'
+	
+
             if int(temp) > maxTemp:
                 maxTemp = int(temp) 
                 
