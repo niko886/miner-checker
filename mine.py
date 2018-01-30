@@ -397,10 +397,15 @@ class MinerInfo():
                 maxTemp = int(temp) 
                 
         log.debug("%s fan speed percent: current %d, max = %s", domain, maxTemp, domainDict['asicFanMax'])
+        
+        maxTempInConfig = sc.getMinerConfig(domain).get('maxTemp', 0)
+        
+        if maxTempInConfig:
+             
                 
-        if maxTemp > sc.getMinerConfig(domain)['maxTemp']: # you can also int(domainDict['asicFanMax']) for example
-            raise ValueError('miner %s high temp reached (temp = %d, max fan rpm = %s)' %
-                             (domain, maxTemp, domainDict['asicFanMax']))
+            if maxTemp > sc.getMinerConfig(domain)['maxTemp']: # you can also int(domainDict['asicFanMax']) for example
+                raise ValueError('miner %s high temp reached (temp = %d, max fan rpm = %s)' %
+                                (domain, maxTemp, domainDict['asicFanMax']))
 
 
     def MakeMinerInfoDigest(self, domain):
